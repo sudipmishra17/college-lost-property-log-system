@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>College Lost Property Log — Aachilecture</title>
+  <style>
+    :root{--accent:#2b6cb0;--muted:#6b7280;--bg:#f7fafc;--card:#ffffff}
+    *{box-sizing:border-box;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial}
+    body{margin:0;background:var(--bg);color:#0f172a}
+    header{background:linear-gradient(90deg,var(--accent),#4c51bf);color:#fff;padding:18px 24px;display:flex;align-items:center;justify-content:space-between}
+    header h1{margin:0;font-size:18px}
+    header nav a{color:rgba(255,255,255,.95);margin-left:12px;text-decoration:none;font-weight:600}
+    .container{max-width:1100px;margin:22px auto;padding:0 16px}
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:18px}
+    .card{background:var(--card);padding:16px;border-radius:10px;box-shadow:0 6px 18px rgba(2,6,23,.06)}
+    h2{margin-top:0}
+    label{display:block;font-size:13px;color:var(--muted);margin-top:10px}
+    input,select,textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #e6edf3;margin-top:6px}
+    button{background:var(--accent);color:#fff;border:0;padding:10px 12px;border-radius:8px;cursor:pointer}
+    .muted{color:var(--muted);font-size:13px}
+    .small{font-size:13px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #eef2f7;text-align:left}
+    .tag{display:inline-block;padding:6px 8px;border-radius:999px;background:#edf2ff;color:#1e3a8a;font-weight:600;font-size:12px}
+    .actions button{margin-right:6px}
+    .right{display:flex;gap:8px;align-items:center}
+    .login-box{max-width:380px;margin:0 auto}
+    .notice{background:#fff7ed;border-left:4px solid #ffb020;padding:10px;border-radius:6px}
+    .search-row{display:flex;gap:8px}
+    .search-row input{flex:1}
+    footer{padding:18px;text-align:center;color:var(--muted);margin-top:28px}
+    .status-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px}
+    .status-active{background:#10b981}
+    .status-archived{background:#94a3b8}
+    pre{background:#0f172a;color:#fff;padding:12px;border-radius:8px;overflow:auto}
+    /* responsive */
+    @media (max-width:900px){.grid{grid-template-columns:1fr}header{flex-direction:column;align-items:flex-start}header nav{margin-top:8px}}
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>College Lost Property Log — Architecture</h1>
+    <div class="small">Staff log & Student inquiry portal</div>
+  </div>
+  <nav>
+    <a href="#home" onclick="navigate('home')">Home</a>
+    <a href="#student" onclick="navigate('student')">Student Search</a>
+    <a href="#staff" onclick="navigate('staffLogin')">Staff Login</a>
+    <a href="#admin" onclick="navigate('admin')">Admin</a>
+  </nav>
+</header>
+
+<div class="container">
+  <div id="app" class="grid">
+    <main class="card" id="mainCard">
+      <!-- content injected by JS -->
+    </main>
+
+    <aside class="card">
+      <h3>Quick actions</h3>
+      <div style="margin-top:10px">
+        <button onclick="demoPopulate()">Populate demo data</button>
+        <button onclick="runArchiveScheduler(true)" style="margin-left:6px">Run archive check</button>
+      </div>
+
+      <div style="margin-top:12px">
+        <h4>System Info</h4>
+        <div class="small muted">Active items: <span id="info-active">0</span></div>
+        <div class="small muted">Archived items: <span id="info-archived">0</span></div>
+        <div class="small muted">Claims: <span id="info-claims">0</span></div>
+      </div>
+
+      <div style="margin-top:12px">
+        <h4>Git workflow (project board)</h4>
+        <div id="gitboard" class="small muted"></div>
+        <div style="margin-top:8px"><button onclick="addGitTaskPrompt()">Add Task</button></div>
+      </div>
+
+      <div style="margin-top:12px">
+        <h4>SKS Requirement</h4>
+        <div class="muted small">
+          Purpose, Scope, Intended Audience, References; Functional Requirements for Staff, Students, Maintenance.
+        </div>
+        <div style="margin-top:8px"><button onclick="showSKS()">View</button></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<footer>
+  <div class="muted">Designed for demo — data stored locally (localStorage). For production: move backend to real API + database, add authentication & HTTPS.</div>
+</footer>
+
+<script>
+/*
+  College Lost Property Log — Single-file demo
+  - Frontend + simulated backend using localStorage
+  - Services: PropertyService, ClaimService, AdminService (simple)
+  - Archiving scheduler: demo uses 60s check (but function moves items older than 90 days)
+  - Git workflow board saved in localStorage
+  Git instructions (for repo):
+    - Create a new GitHub repo "college-lost-property-log"
+    - Each contributor uses their own branch: feature/<name>-<task>
+    - Use PRs: In Progress -> Testing -> Done
+*/
+
+// ------------------------ Utilities & Mock DB ------------------------
+const DB = {
+  keyActive: 'clpl_active',
+  keyArchived: 'clpl_archived',
+  keyClaims: 'clpl_claims',
+  keyUsers: 'clpl_users',
+  keyGitboard: 'clpl_gitboard'
+}
+
+function read(key){
+  try{const s=localStorage.getItem(key);return s?JSON.parse(s):[];}catch(e){console.error(e);return[]}
+}
+function write(key,val){localStorage.setItem(key,JSON.stringify(val));}
+
+// initialize default users
+function ensureUsers(){
+  let users=read(DB.keyUsers);
+  if(users.length===0){
+    users=[{id:'staff-admin',role:'staff',username:'staff1',password:'pass123',name:'Staff One'},{id:'admin',role:'admin',username:'admin',password:'admin',name:'Admin'}];
+    write(DB.keyUsers,users);
+  }
+}
+ensureUsers();
+
+// ------------------------ Services ------------------------
+const PropertyService = {
+  add(property){
+    const items=read(DB.keyActive);
+    property.id = 'P' + Date.now();
+    property.foundAt = new Date().toISOString();
+    items.push(property);
+    write(DB.keyActive, items);
+    refreshInfo();
+    return property;
+  },
+  update(id, patch){
+    const items=read(DB.keyActive);
+    const idx=items.findIndex(x=>x.id===id);
+    if(idx===-1) return null;
+    items[idx]=Object.assign(items[idx],patch);
+    write(DB.keyActive,items);
+    refreshInfo();
+    return items[idx];
+  },
+  list(){return read(DB.keyActive)},
+  get(id){return read(DB.keyActive).find(x=>x.id===id)},
+  archiveOlderThan(days){
+    const cutoff=new Date(Date.now()-days*24*3600*1000);
+    const items=read(DB.keyActive);
+    const archive=read(DB.keyArchived);
+    const keep=[];
+    const moved=[];
+    for(const it of items){
+      const found=new Date(it.foundAt);
+      if(found < cutoff){ moved.push(it); } else keep.push(it);
+    }
+    if(moved.length){
+      write(DB.keyActive,keep);
+      const archivedWithMeta = moved.map(it=>({...it, archivedAt:new Date().toISOString()}));
+      write(DB.keyArchived, archive.concat(archivedWithMeta));
+      refreshInfo();
+    }
+    return moved;
+  },
+  listArchived(){return read(DB.keyArchived)}
+}
+
+const ClaimService = {
+  create(claim){
+    const claims=read(DB.keyClaims);
+    claim.id='C'+Date.now();
+    claim.createdAt=new Date().toISOString();
+    claims.push(claim);
+    write(DB.keyClaims,claims);
+    refreshInfo();
+    return claim;
+  },
+  list(){return read(DB.keyClaims)}
+}
+
+// simple admin service for git board
+const AdminService = {
+  getBoard(){return read(DB.keyGitboard)},
+  addTask(task){const board=read(DB.keyGitboard); task.id='T'+Date.now(); board.push(task); write(DB.keyGitboard,board);}
+}
+
+// ------------------------ UI Routing ------------------------
+let currentUser=null; // simple auth state
+let archiveIntervalHandle=null;
+
+function navigate(page){
+  const main=document.getElementById('mainCard');
+  if(page==='home') renderHome(main);
+  else if(page==='student') renderStudent(main);
+  else if(page==='staffLogin') renderStaffLogin(main);
+  else if(page==='staff' && currentUser && currentUser.role==='staff') renderStaffDashboard(main);
+  else if(page==='admin' && currentUser && currentUser.role==='admin') renderAdmin(main);
+  else if(page==='admin') renderAdminLogin(main);
+  else renderHome(main);
+}
+
+// ------------------------ Renderers ------------------------
+function renderHome(el){
+  el.innerHTML=`
+    <h2>Welcome</h2>
+    <p class="muted">This website helps college staff log items students find, lets students search and request inquiries, and provides an admin interface for managing the system.</p>
+    <div style="margin-top:12px">
+      <h3>How to use (demo)</h3>
+      <ul class="muted small">
+        <li>Staff: Login &amp; add found items, mark them claimed, or remove them.</li>
+        <li>Students: Search items and submit a claim/inquiry.</li>
+        <li>Admin: View active &amp; archived items, run archiving scheduler, and manage project tasks.</li>
+      </ul>
+    </div>
+    <div style="margin-top:12px">
+      <h3>Quick links</h3>
+      <div class="right"><button onclick="navigate('student')">Student Search</button><button onclick="navigate('staffLogin')">Staff Login</button></div>
+    </div>
+  `;
+}
+
+function renderStudent(el){
+  el.innerHTML=`
+    <h2>Student — Search Lost Items</h2>
+    <div class="search-row" style="margin-top:8px">
+      <input id="studentSearch" placeholder="Search by keyword (e.g., wallet, phone, keys)" />
+      <button onclick="studentSearch()">Search</button>
+    </div>
+    <div id="studentResults" style="margin-top:12px"></div>
+    <div style="margin-top:12px">
+      <h3>Submit Inquiry / Claim</h3>
+      <div class="muted small">If you think an item is yours, fill this quick claim form — staff will follow up.</div>
+      <label>Name<input id="claim_name" /></label>
+      <label>Email<input id="claim_email" /></label>
+      <label>Item ID (from search results)<input id="claim_itemid"/></label>
+      <label>Message<textarea id="claim_message"></textarea></label>
+      <button onclick="submitClaim()">Submit Claim</button>
+    </div>
+  `;
+  renderStudentResults(PropertyService.list());
+}
+
+function studentSearch(){
+  const q=document.getElementById('studentSearch').value.trim().toLowerCase();
+  const all=PropertyService.list();
+  const filtered=all.filter(it=> (it.title||'').toLowerCase().includes(q) || (it.description||'').toLowerCase().includes(q) );
+  renderStudentResults(filtered);
+}
+function renderStudentResults(items){
+  const out=document.getElementById('studentResults');
+  if(!out) return;
+  if(items.length===0) out.innerHTML='<div class="muted">No matching items.</div>';
+  else{
+    out.innerHTML='<table><thead><tr><th>ID</th><th>Item</th><th>Found</th><th>Location</th></tr></thead><tbody>' + items.map(it=>`<tr><td>${it.id}</td><td><strong>${escapeHtml(it.title)}</strong><div class="muted small">${escapeHtml(it.description||'')}</div></td><td>${new Date(it.foundAt).toLocaleString()}</td><td class="muted small">${escapeHtml(it.foundLocation||'')}</td></tr>`).join('') + '</tbody></table>';
+  }
+}
+
+function submitClaim(){
+  const name=document.getElementById('claim_name').value.trim();
+  const email=document.getElementById('claim_email').value.trim();
+  const itemId=document.getElementById('claim_itemid').value.trim();
+  const msg=document.getElementById('claim_message').value.trim();
+  if(!name||!email||!itemId){alert('Please provide name, email and item ID');return}
+  const target=PropertyService.get(itemId);
+  if(!target){alert('Item ID not found');return}
+  const claim=ClaimService.create({itemId, name, email, message:msg, status:'pending'});
+  alert('Claim submitted. Reference: ' + claim.id);
+  navigate('student');
+}
+
+function renderStaffLogin(el){
+  el.innerHTML=`
+    <div class="login-box">
+      <h2>Staff Login</h2>
+      <label>Username<input id="login_user" /></label>
+      <label>Password<input id="login_pass" type="password" /></label>
+      <div style="margin-top:10px"><button onclick="staffLogin()">Login</button></div>
+      <div style="margin-top:10px" class="muted small">Demo accounts: staff1 / pass123, admin / admin</div>
+    </div>
+  `;
+}
+function staffLogin(){
+  const user=document.getElementById('login_user').value.trim();
+  const pass=document.getElementById('login_pass').value.trim();
+  const users=read(DB.keyUsers);
+  const match=users.find(u=>u.username===user && u.password===pass);
+  if(match){currentUser=match; alert('Logged in as ' + match.name); navigate('staff');}
+  else alert('Invalid credentials');
+}
+
+function renderStaffDashboard(el){
+  const items=PropertyService.list();
+  const claims=ClaimService.list();
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center"><h2>Staff Dashboard</h2><div class="muted small">Signed in as ${escapeHtml(currentUser.name)} <button onclick="logout()" style="margin-left:8px">Logout</button></div></div>
+
+    <div style="margin-top:8px">
+      <h3>Add Found Item</h3>
+      <label>Title<input id="f_title"/></label>
+      <label>Description<textarea id="f_desc"></textarea></label>
+      <label>Found Location<input id="f_location"/></label>
+      <label>Tags (comma separated)<input id="f_tags"/></label>
+      <div style="margin-top:8px"><button onclick="addFoundItem()">Log Found Item</button></div>
+    </div>
+
+    <div style="margin-top:12px">
+      <h3>Active Items</h3>
+      <div id="staffItems">${renderItemsTableHTML(items)}</div>
+    </div>
+
+    <div style="margin-top:12px">
+      <h3>Claims</h3>
+      <div id="staffClaims">${renderClaimsTableHTML(claims)}</div>
+    </div>
+  `;
+}
+
+function renderItemsTableHTML(items){
+  if(items.length===0) return '<div class="muted">No active items</div>';
+  return '<table><thead><tr><th>ID</th><th>Item</th><th>Found</th><th>Status</th><th>Actions</th></tr></thead><tbody>' + items.map(it=>`<tr><td>${it.id}</td><td><strong>${escapeHtml(it.title)}</strong><div class="muted small">${escapeHtml(it.description||'')}</div></td><td>${new Date(it.foundAt).toLocaleString()}</td><td>${it.status||'available'}</td><td class="actions"><button onclick="markClaimed('${it.id}')">Mark Claimed</button><button onclick="archiveItem('${it.id}')">Archive</button> <button onclick="removeItem('${it.id}')">Remove</button></td></tr>`).join('') + '</tbody></table>';
+}
+
+function renderClaimsTableHTML(claims){
+  if(claims.length===0) return '<div class="muted">No claims</div>';
+  return '<table><thead><tr><th>ID</th><th>Item</th><th>Claimant</th><th>Created</th><th>Actions</th></tr></thead><tbody>' + claims.map(c=>`<tr><td>${c.id}</td><td>${c.itemId}</td><td>${escapeHtml(c.name)}<div class="muted small">${escapeHtml(c.email)}</div></td><td>${new Date(c.createdAt).toLocaleString()}</td><td class="actions"><button onclick="resolveClaim('${c.id}','approve')">Approve</button><button onclick="resolveClaim('${c.id}','reject')">Reject</button></td></tr>`).join('') + '</tbody></table>';
+}
+
+function addFoundItem(){
+  const title=document.getElementById('f_title').value.trim();
+  const desc=document.getElementById('f_desc').value.trim();
+  const loc=document.getElementById('f_location').value.trim();
+  const tags=document.getElementById('f_tags').value.split(',').map(s=>s.trim()).filter(Boolean);
+  if(!title){alert('Title required');return}
+  PropertyService.add({title,description:desc,foundLocation:loc,tags,status:'available'});
+  alert('Item logged');
+  navigate('staff');
+}
+
+function markClaimed(id){
+  if(!confirm('Mark item as claimed?')) return;
+  PropertyService.update(id,{status:'claimed'});
+  navigate('staff');
+}
+function archiveItem(id){
+  const items=read(DB.keyActive);
+  const keep=items.filter(x=>x.id!==id);
+  const toMove=items.find(x=>x.id===id);
+  if(!toMove) return alert('Not found');
+  const archived=read(DB.keyArchived);
+  toMove.archivedAt=new Date().toISOString();
+  write(DB.keyArchived, archived.concat(toMove));
+  write(DB.keyActive, keep);
+  refreshInfo();
+  navigate('staff');
+}
+function removeItem(id){
+  if(!confirm('Remove item permanently?')) return;
+  const items=read(DB.keyActive).filter(x=>x.id!==id);
+  write(DB.keyActive,items);
+  refreshInfo();
+  navigate('staff');
+}
+
+function resolveClaim(id,action){
+  const claims=read(DB.keyClaims);
+  const idx=claims.findIndex(c=>c.id===id);
+  if(idx===-1) return alert('Claim not found');
+  claims[idx].status = action==='approve' ? 'approved' : 'rejected';
+  write(DB.keyClaims,claims);
+  if(action==='approve'){
+    // mark corresponding item claimed
+    PropertyService.update(claims[idx].itemId,{status:'claimed'});
+  }
+  alert('Claim ' + claims[idx].status);
+  navigate('staff');
+}
+
+function logout(){currentUser=null;navigate('home');}
+
+function renderAdminLogin(el){
+  el.innerHTML=`
+    <div class="login-box">
+      <h2>Admin Login</h2>
+      <label>Username<input id="admin_user" /></label>
+      <label>Password<input id="admin_pass" type="password" /></label>
+      <div style="margin-top:10px"><button onclick="adminLogin()">Login</button></div>
+    </div>
+  `;
+}
+function adminLogin(){
+  const user=document.getElementById('admin_user').value.trim();
+  const pass=document.getElementById('admin_pass').value.trim();
+  const users=read(DB.keyUsers);
+  const match=users.find(u=>u.username===user && u.password===pass && u.role==='admin');
+  if(match){currentUser=match;alert('Logged in as admin');navigate('admin');}
+  else alert('Invalid credentials');
+}
+
+function renderAdmin(el){
+  const items=PropertyService.list();
+  const archived=PropertyService.listArchived();
+  const claims=ClaimService.list();
+  el.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center"><h2>Admin Console</h2><div class="muted small">Signed in as ${escapeHtml(currentUser.name)} <button onclick="logout()" style="margin-left:8px">Logout</button></div></div>
+    <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="card"><h3>Active Items</h3><div>${renderItemsTableHTML(items)}</div></div>
+      <div class="card"><h3>Archived Items</h3><div>${ archived.length?('<table><thead><tr><th>ID</th><th>Item</th><th>Archived</th></tr></thead><tbody>' + archived.map(a=>`<tr><td>${a.id}</td><td>${escapeHtml(a.title)}</td><td>${new Date(a.archivedAt).toLocaleString()}</td></tr>`).join('') + '</tbody></table>') : '<div class="muted">No archived items</div>' }</div></div>
+    <div style="margin-top:12px"><h3>Claims</h3><div>${renderClaimsTableHTML(claims)}</div></div>
+    <div style="margin-top:12px"><h3>Archive Scheduler</h3><div class="muted small">The scheduler moves items older than 90 days to archived log. For demo you can trigger it manually or enable periodic runs.</div><div style="margin-top:8px"><button onclick="runArchiveScheduler(false)">Run Now</button><button onclick="toggleScheduler()" style="margin-left:8px">Toggle Periodic (demo interval)</button></div></div>
+    <div style="margin-top:12px"><h3>Project Git Board</h3><div id="adminBoard"></div><div style="margin-top:8px"><button onclick="renderGitBoard()">Refresh Board</button></div></div>
+  `;
+  renderGitBoard();
+}
+
+function runArchiveScheduler(showAlert){
+  const moved = PropertyService.archiveOlderThan(90); // 90 days
+  if(showAlert) alert(`Archived ${moved.length} items (older than 90 days)`);
+}
+
+function toggleScheduler(){
+  if(archiveIntervalHandle){ clearInterval(archiveIntervalHandle); archiveIntervalHandle=null; alert('Scheduler stopped'); }
+  else{ archiveIntervalHandle=setInterval(()=>{ const moved=PropertyService.archiveOlderThan(90); if(moved.length) console.log('Auto-archived', moved.length);}, 60*1000); alert('Scheduler started (demo interval = 60s)'); }
+}
+
+// ------------------------ Git board ------------------------
+function addGitTaskPrompt(){
+  const title = prompt('Task title'); if(!title) return;
+  const assignee = prompt('Assignee (name)') || 'unassigned';
+  AdminService.addTask({title,assignee,status:'In Progress'});
+  renderGitBoard();
+}
+function renderGitBoard(){
+  const board=AdminService.getBoard();
+  const el=document.getElementById('gitboard');
+  if(!el) return;
+  if(board.length===0) el.innerHTML='<div class="muted small">No tasks</div>';
+  else el.innerHTML = board.map(t=>`<div style="margin-bottom:6px"><strong>${escapeHtml(t.title)}</strong> <div class="muted small">${escapeHtml(t.assignee)} • ${escapeHtml(t.status)}</div></div>`).join('');
+  const adminBoard=document.getElementById('adminBoard'); if(adminBoard) adminBoard.innerHTML = el.innerHTML;
+}
+
+function showSKS(){
+  const main=document.getElementById('mainCard');
+  main.innerHTML = `
+    <h2>SKS Requirement</h2>
+    <h3>Purpose</h3>
+    <p class="muted small">Provide a reliable lost property logging system for college staff and an inquiry/claim portal for students. Ensure traceability and auditing of found items.</p>
+    <h3>Scope</h3>
+    <p class="muted small">Covers found items logged on campus, staff workflows for logging and claiming, archiving older records, and administrative oversight. Does not include off-campus lost-and-found.</p>
+    <h3>Intended Audience</h3>
+    <p class="muted small">College staff (security, reception), students, and administrators.</p>
+    <h3>References</h3>
+    <ul class="muted small"><li>College policies on lost property</li><li>Local data-retention rules</li><li>Git workflow: feature branches, PR reviews</li></ul>
+    <h3>Functional Requirements</h3>
+    <ol class="muted small"><li>Staff features: login, log found items, mark claimed, archive, remove items, view claims.</li><li>Student features: search items, submit claim, receive claim reference.</li><li>Maintenance: archive scheduler (90 days), admin reports, database backups.</li></ol>
+  `;
+}
+
+// ------------------------ Demo helpers ------------------------
+function demoPopulate(){
+  // create some sample items with varying dates
+  const now=Date.now();
+  const sample=[
+    {title:'Blue iPhone',description:'iPhone with blue case',foundLocation:'Library',foundAt:new Date(now-2*24*3600*1000).toISOString(),tags:['phone'],status:'available'},
+     {title:'Red bag',description:'bag with red color',foundLocation:'classroom 304',foundAt:new Date(now-2*24*3600*1000).toISOString(),tags:['bag'],status:'available'},
+    {title:'Black Wallet',description:'Leather wallet with student ID',foundLocation:'Cafeteria',foundAt:new Date(now-10*24*3600*1000).toISOString(),tags:['wallet'],status:'available'},
+    {title:'Keys with red tag',description:'Car + house keys',foundLocation:'Gym',foundAt:new Date(now-120*24*3600*1000).toISOString(),tags:['keys'],status:'available'}
+  ];
+  // convert to property objects and write
+  const items=read(DB.keyActive).concat(sample.map(s=>({...s,id:'P'+(Math.random()*1e9|0),foundAt:s.foundAt}))); write(DB.keyActive,items);
+  refreshInfo();
+  alert('Demo data added');
+  navigate('home');
+}
+
+// ------------------------ Small helpers ------------------------
+function escapeHtml(s){ if(!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function refreshInfo(){
+  document.getElementById('info-active').innerText = read(DB.keyActive).length;
+  document.getElementById('info-archived').innerText = read(DB.keyArchived).length;
+  document.getElementById('info-claims').innerText = read(DB.keyClaims).length;
+  renderGitBoard();
+}
+
+// initialize storage keys if missing
+(function init(){
+  if(localStorage.getItem(DB.keyActive)===null) write(DB.keyActive,[]);
+  if(localStorage.getItem(DB.keyArchived)===null) write(DB.keyArchived,[]);
+  if(localStorage.getItem(DB.keyClaims)===null) write(DB.keyClaims,[]);
+  if(localStorage.getItem(DB.keyGitboard)===null) write(DB.keyGitboard,[]);
+  refreshInfo();
+  navigate('home');
+})();
+
+// ------------------------ Small Admin utilities for Dev ------------------------
+function renderGitBoard(){
+  const board=AdminService.getBoard();
+  const el=document.getElementById('gitboard'); if(!el) return;
+  if(board.length===0) el.innerHTML='<div class="muted small">No tasks</div>'; else el.innerHTML = board.map(t=>`<div style="margin-bottom:6px"><strong>${escapeHtml(t.title)}</strong><div class="muted small">${escapeHtml(t.assignee)} • ${escapeHtml(t.status)}</div></div>`).join('');
+}
+
+// expose some functions to window for demo
+window.navigate = navigate;
+window.demoPopulate = demoPopulate;
+window.runArchiveScheduler = runArchiveScheduler;
+window.addGitTaskPrompt = addGitTaskPrompt;
+window.renderGitBoard = renderGitBoard;
+window.toggleScheduler = toggleScheduler;
+
+</script>
+</body>
+</html>
