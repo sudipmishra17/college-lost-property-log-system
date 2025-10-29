@@ -1,11 +1,15 @@
-SRS-Document-for-Aachilecture-College-Lost-Property-Management-System
+**SRS-Document-for-Aachilecture-College-Lost-Property-Management-System**
+
+
 I prepared a Software Requirements Specification (SRS) document, as a part of my graduate course DAT709 – The IT Professional Capstone, guided by Dr. Ayesha Sohail. This SRS document refers to various college lost property management systems, web applications, and similar administrative tools.
+
 The purpose of this document is to give a detailed description of the requirements for the “Architecture: College Lost Property Management System” software. It will illustrate the purpose and complete declaration for the development of the system. It will also explain system constraints, interfaces, and interactions with other external applications. This document is primarily intended to be proposed to a customer for its approval.
 
 About Architecture – College Lost Property Management System:
 Architecture is a web-based system designed to help colleges manage lost and found property efficiently. College staff can log found items, students can search for items and submit claim requests, and administrators can manage and approve claims. The system also includes automatic archiving of items older than 90 days.
 
 Context Diagram for Architecture
+<img width="1273" height="737" alt="image" src="https://github.com/user-attachments/assets/3c2e94eb-60e4-4c62-9e3d-faa89f04322d" />
 
 
 Importance of Software Requirements
